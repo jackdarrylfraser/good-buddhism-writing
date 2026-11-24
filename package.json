@@ -1,0 +1,12 @@
+{
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@vercel/functions": "3.11.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0"
+  }
+}

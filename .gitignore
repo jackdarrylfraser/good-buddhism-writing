@@ -5,3 +5,5 @@ _site
 vendor
 public
 .vercel
+
+node_modules
