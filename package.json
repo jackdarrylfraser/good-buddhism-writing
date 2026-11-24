@@ -4,7 +4,10 @@
     "node": ">=20"
   },
   "dependencies": {
-    "@vercel/functions": "3.11.3"
+    "@t3-oss/env-core": "^0.13.11",
+    "@vercel/functions": "3.11.3",
+    "dotenv": "^18.0.10",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/node": "^20.0.0"

@@ -1,12 +1,36 @@
 import { next } from "@vercel/functions";
+import { env } from "./env";
 
-const AUTH_SERVICE_URL =
-  process.env.AUTH_SERVICE_URL ?? "https://auth.outboundendurance.com";
+type AccessLevel = "authenticated" | "paid";
+
+const routeAccessRules: { prefix: string; access: AccessLevel }[] = [
+  { prefix: "/protected/account", access: "authenticated" },
+  { prefix: "/protected/courses", access: "paid" },
+];
+
+function getRequiredAccess(pathname: string): AccessLevel {
+  const matchingRules = routeAccessRules
+    .filter(
+      ({ prefix }) =>
+        pathname === prefix || pathname.startsWith(`${prefix}/`),
+    )
+    .sort((left, right) => right.prefix.length - left.prefix.length);
+
+  return matchingRules[0]?.access ?? "paid";
+}
 
 function redirectToAuth(request: Request, path: "/login" | "/subscribe") {
-  const destination = new URL(path, AUTH_SERVICE_URL);
+  const destination = new URL(path, env.AUTH_SERVICE_URL);
   destination.searchParams.set("returnTo", request.url);
   return Response.redirect(destination);
+}
+
+function denyAccess(request: Request, access: AccessLevel) {
+  if (access === "paid") {
+    return redirectToAuth(request, "/subscribe");
+  }
+
+  return new Response("Access denied.", { status: 403 });
 }
 
 function getSessionCookie(request: Request) {
@@ -28,6 +52,7 @@ function getSessionCookie(request: Request) {
 }
 
 export default async function proxy(request: Request) {
+  const requiredAccess = getRequiredAccess(new URL(request.url).pathname);
   const sessionCookie = getSessionCookie(request);
 
   if (!sessionCookie) {
@@ -36,11 +61,11 @@ export default async function proxy(request: Request) {
 
   let response: Response;
   try {
-    response = await fetch(new URL("/api/access", AUTH_SERVICE_URL), {
+    response = await fetch(new URL("/api/access", env.AUTH_SERVICE_URL), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        access: "paid",
+        access: requiredAccess,
         cookie: {
           name: sessionCookie.name,
           value: sessionCookie.value,
@@ -58,7 +83,7 @@ export default async function proxy(request: Request) {
   }
 
   if (response.status === 403) {
-    return redirectToAuth(request, "/subscribe");
+    return denyAccess(request, requiredAccess);
   }
 
   if (!response.ok) {
@@ -81,10 +106,17 @@ export default async function proxy(request: Request) {
     typeof result === "object" &&
     result !== null &&
     "accessType" in result &&
-    result.accessType === "paid" &&
+    typeof result.accessType === "string" &&
     "hasAccess" in result &&
-    result.hasAccess === true
+    typeof result.hasAccess === "boolean"
   ) {
+    if (
+      !result.hasAccess ||
+      (requiredAccess === "paid" && result.accessType !== "paid")
+    ) {
+      return denyAccess(request, requiredAccess);
+    }
+
     return next();
   }
 
